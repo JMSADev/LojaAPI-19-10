@@ -1,4 +1,5 @@
-﻿using LojaAPI.Data;
+﻿
+using LojaAPI.Data;
 using LojaAPI.DTOs;
 using LojaAPI.Models;
 using Microsoft.AspNetCore.Mvc;
@@ -29,11 +30,32 @@ namespace LojaAPI.Controllers
             return Ok(funcionarios);
         }
 
+        // GET: api/Funcionarios/1
+        // Busca um funcionário pelo ID da pessoa
+        [HttpGet("{id}")]
+        public async Task<IActionResult> BuscarPorId(int id)
+        {
+            var funcionario = await _context.Funcionarios
+                .Include(f => f.IdpessoaNavigation)
+                    .ThenInclude(p => p.Enderecos)
+                .FirstOrDefaultAsync(f => f.Idpessoa == id);
+
+            if (funcionario == null)
+            {
+                return NotFound(new
+                {
+                    mensagem = "Funcionário não encontrado."
+                });
+            }
+
+            return Ok(funcionario);
+        }
+
         // POST: api/Funcionarios
         // Cadastra uma pessoa, um funcionário e seu endereço
         [HttpPost]
         public async Task<IActionResult> Cadastrar(
-            FuncionarioCreateDto dto)
+            [FromBody] FuncionarioCreateDTO dto)
         {
             await using var transacao =
                 await _context.Database.BeginTransactionAsync();
@@ -53,11 +75,9 @@ namespace LojaAPI.Controllers
                 };
 
                 _context.Pessoas.Add(pessoa);
-
-                // Salva para gerar o ID da pessoa
                 await _context.SaveChangesAsync();
 
-                // 2. Cadastra os dados do funcionário
+                // 2. Cadastra os dados profissionais
                 var funcionario = new Funcionario
                 {
                     Idpessoa = pessoa.Idpessoa,
@@ -78,10 +98,7 @@ namespace LojaAPI.Controllers
 
                 _context.Enderecos.Add(endereco);
 
-                // Salva o funcionário e o endereço
                 await _context.SaveChangesAsync();
-
-                // Confirma todas as alterações
                 await transacao.CommitAsync();
 
                 return Created(
@@ -96,10 +113,104 @@ namespace LojaAPI.Controllers
             }
             catch
             {
-                // Desfaz as alterações caso ocorra um erro
                 await transacao.RollbackAsync();
                 throw;
             }
+        }
+
+        // PUT: api/Funcionarios/1
+        // Atualiza os dados pessoais, profissionais e endereço
+        [HttpPut("{id}")]
+        public async Task<IActionResult> Atualizar(
+            int id,
+            [FromBody] FuncionarioCreateDTO dto)
+        {
+            var funcionario = await _context.Funcionarios
+                .Include(f => f.IdpessoaNavigation)
+                    .ThenInclude(p => p.Enderecos)
+                .FirstOrDefaultAsync(f => f.Idpessoa == id);
+
+            if (funcionario == null)
+            {
+                return NotFound(new
+                {
+                    mensagem = "Funcionário não encontrado."
+                });
+            }
+
+            // Atualiza os dados pessoais
+            var pessoa = funcionario.IdpessoaNavigation;
+
+            pessoa.Nome = dto.Nome;
+            pessoa.Cpf = dto.Cpf;
+            pessoa.DataNascimento = dto.DataNascimento;
+            pessoa.Sexo = dto.Sexo;
+            pessoa.Email = dto.Email;
+            pessoa.Telefone = dto.Telefone;
+            pessoa.AtivoPessoa = dto.AtivoPessoa;
+
+            // Atualiza os dados profissionais
+            funcionario.Cargo = dto.Cargo;
+            funcionario.DataAdmissao = dto.DataAdmissao;
+
+            // Atualiza o primeiro endereço ou cadastra um novo
+            var endereco = pessoa.Enderecos.FirstOrDefault();
+
+            if (endereco != null)
+            {
+                endereco.Cep = dto.Cep;
+                endereco.Numero = dto.Numero;
+                endereco.Complemento = dto.Complemento;
+            }
+            else
+            {
+                pessoa.Enderecos.Add(new Endereco
+                {
+                    Idpessoa = pessoa.Idpessoa,
+                    Cep = dto.Cep,
+                    Numero = dto.Numero,
+                    Complemento = dto.Complemento
+                });
+            }
+
+            await _context.SaveChangesAsync();
+
+            return NoContent();
+        }
+
+        // DELETE: api/Funcionarios/1
+        // Exclui um funcionário
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> Excluir(int id)
+        {
+            var funcionario = await _context.Funcionarios
+                .FirstOrDefaultAsync(f => f.Idpessoa == id);
+
+            if (funcionario == null)
+            {
+                return NotFound(new
+                {
+                    mensagem = "Funcionário não encontrado."
+                });
+            }
+
+            // Verifica se existem itens de atendimento vinculados
+            bool possuiAtendimentos = await _context.Atendimentoitems
+                .AnyAsync(a => a.Idfuncionario == id);
+
+            if (possuiAtendimentos)
+            {
+                return Conflict(new
+                {
+                    mensagem = "Não é possível excluir este funcionário, pois ele possui atendimentos vinculados."
+                });
+            }
+
+            _context.Funcionarios.Remove(funcionario);
+
+            await _context.SaveChangesAsync();
+
+            return NoContent();
         }
     }
 }

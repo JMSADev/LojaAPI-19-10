@@ -1,7 +1,7 @@
 ﻿
 namespace LojaAPI.DTOs
 {
-    public class FuncionarioCreateDto
+    public class FuncionarioCreateDTO
     {
         // Dados pessoais
         public string Nome { get; set; } = string.Empty;
