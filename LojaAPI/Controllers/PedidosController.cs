@@ -93,6 +93,18 @@ public class PedidosController : ControllerBase
         return Ok(await Montar(consulta));
     }
 
+    // GET: api/Pedidos/5
+    [HttpGet("{id}")]
+    public async Task<IActionResult> BuscarPorId(int id)
+    {
+        var pedidos = await Montar(_context.Atendimentos.Where(a => a.Idatendimento == id));
+
+        if (pedidos.Count == 0)
+            return NotFound(new { mensagem = "Pedido não encontrado." });
+
+        return Ok(pedidos[0]);
+    }
+
     // POST: api/Pedidos
     // Cria o pedido e os itens de uma vez. Se algo falhar (ex.: sem estoque),
     // nada é salvo. O preço vem do banco, não do frontend.
@@ -107,6 +119,10 @@ public class PedidosController : ControllerBase
 
         if (!await _context.Pessoas.AnyAsync(p => p.Idpessoa == dto.Idpessoa && p.AtivoPessoa == "S"))
             return BadRequest(new { mensagem = "O cliente informado não existe." });
+
+        // MUDOU: se o front não informar o funcionário, usa o primeiro cadastrado.
+        if (dto.Idfuncionario == 0)
+            dto.Idfuncionario = await _context.Funcionarios.Select(f => f.Idpessoa).FirstOrDefaultAsync();
 
         if (!await _context.Funcionarios.AnyAsync(f => f.Idpessoa == dto.Idfuncionario))
             return BadRequest(new { mensagem = "O funcionário informado não existe." });
@@ -210,7 +226,7 @@ public class PedidosController : ControllerBase
 public class PedidoCreateDTO
 {
     public int Idpessoa { get; set; }
-    public int Idfuncionario { get; set; } = 1;
+    public int Idfuncionario { get; set; } = 0; // MUDOU: era 1. 0 = "escolher automaticamente"
     public List<PedidoItemDTO> Itens { get; set; } = new();
 }
 
